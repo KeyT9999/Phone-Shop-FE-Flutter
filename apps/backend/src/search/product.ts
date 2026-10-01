@@ -7,6 +7,7 @@ import {
 } from "@medusajs/framework/utils";
 
 import { ProductOptionRow, toOptionValues } from "./helpers/option-values";
+import { toProductBrand } from "./helpers/metadata";
 import { loadPricing, priceFields, toProductPricing } from "./helpers/pricing";
 import { resolveProductIds } from "./helpers/resolve-product-ids";
 
@@ -21,6 +22,7 @@ const PRODUCT_GRAPH_FIELDS = [
   "sales_channels.id",
   "categories.name",
   "tags.value",
+  "metadata",
   "options.title",
   "options.values.value",
 ];
@@ -37,6 +39,7 @@ type ProductRow = {
   sales_channels?: ({ id?: string | null } | null)[] | null;
   categories?: ({ name?: string | null } | null)[] | null;
   tags?: ({ value?: string | null } | null)[] | null;
+  metadata?: Record<string, unknown> | null;
   options?: ProductOptionRow[] | null;
 };
 
@@ -52,6 +55,7 @@ const productFields = search.define({
   thumbnail: search.keyword().retrievable(),
   created_at: search.date().sortable().retrievable(),
   category: search.keyword().array().filterable().facetable().retrievable(),
+  brand: search.keyword().filterable().facetable().retrievable(),
   labels: search.keyword().array().filterable().facetable().retrievable(),
   option_values: search
     .keyword()
@@ -80,7 +84,6 @@ function toDocument(
   const salesChannelIds = (product.sales_channels ?? [])
     .map((salesChannel) => salesChannel?.id?.trim())
     .filter((id): id is string => Boolean(id));
-
   return {
     id: product.id,
     status: product.status ?? null,
@@ -91,6 +94,7 @@ function toDocument(
     thumbnail: product.thumbnail ?? null,
     created_at: product.created_at ?? null,
     category,
+    brand: toProductBrand(product.metadata),
     labels,
     option_values: toOptionValues(product.options),
     ...toProductPricing(pricing),
