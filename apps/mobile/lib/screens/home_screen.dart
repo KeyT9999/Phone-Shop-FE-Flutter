@@ -1,36 +1,131 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+
 import '../models/product.dart';
+import '../services/cart_storage.dart';
 import '../services/medusa_service.dart';
-import 'product_detail_screen.dart';
 import 'cart_screen.dart';
+import 'profile_screen.dart';
+import 'product_detail_screen.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({Key? key}) : super(key: key);
+  const HomeScreen({super.key, this.service});
+
+  final MedusaService? service;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  late Future<List<Product>> _productsFuture;
-  final TextEditingController _searchController = TextEditingController();
-  final _currencyFormat = NumberFormat.currency(locale: 'vi_VN', symbol: '₫');
+  static const _brands = ['Tất cả', 'Apple', 'Samsung', 'Xiaomi', 'OPPO'];
 
-  String? _cartId;
+  final TextEditingController _searchController = TextEditingController();
+  final NumberFormat _currencyFormat = NumberFormat.currency(
+    locale: 'vi_VN',
+    symbol: '₫',
+    decimalDigits: 0,
+  );
+
+  late final MedusaService _service;
+  late final CartStorage _cartStorage;
+  late Future<List<Product>> _productsFuture;
+  late Future<void> _cartIdRestoration;
+  Timer? _searchDebounce;
   String _selectedBrand = 'Tất cả';
-  final List<String> _brands = ['Tất cả', 'iPhone', 'Samsung', 'Xiaomi', 'OPPO'];
+  String? _cartId;
 
   @override
   void initState() {
     super.initState();
-    _fetchProducts();
+    _service = widget.service ?? MedusaService.instance;
+    _cartStorage = CartStorage.instance;
+    _cartIdRestoration = _restoreCartId();
+    _productsFuture = _loadProducts();
   }
 
-  void _fetchProducts([String? query]) {
-    setState(() {
-      _productsFuture = MedusaService.getProducts(query: query);
+  Future<void> _restoreCartId() async {
+    try {
+      final cartId = await _cartStorage.readCartId();
+      if (mounted) setState(() => _cartId = cartId);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Không thể khôi phục giỏ hàng: $error')),
+      );
+    }
+  }
+
+  Future<void> _openCart() async {
+    await _cartIdRestoration;
+    if (!mounted) return;
+
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CartScreen(
+          cartId: _cartId,
+          service: _service,
+          storage: _cartStorage,
+          onCartIdChanged: (id) {
+            if (mounted) setState(() => _cartId = id);
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openProfile() async {
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(builder: (_) => ProfileScreen(service: _service)),
+    );
+  }
+
+  Future<List<Product>> _loadProducts() {
+    return _service.getProducts(
+      query: _searchController.text,
+      brand: _selectedBrand == 'Tất cả' ? null : _selectedBrand,
+    );
+  }
+
+  void _refreshProducts() {
+    setState(() => _productsFuture = _loadProducts());
+  }
+
+  void _onSearchChanged(String value) {
+    setState(() {});
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 350), () {
+      if (mounted) _refreshProducts();
     });
+  }
+
+  Future<void> _refreshFromGesture() async {
+    _refreshProducts();
+    try {
+      await _productsFuture;
+    } catch (_) {
+      // The FutureBuilder renders the request error with a retry action.
+    }
+  }
+
+  void _selectBrand(String brand) {
+    if (brand == _selectedBrand) return;
+    _searchDebounce?.cancel();
+    setState(() {
+      _selectedBrand = brand;
+      _productsFuture = _loadProducts();
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    _searchController.dispose();
+    super.dispose();
   }
 
   @override
@@ -38,236 +133,424 @@ class _HomeScreenState extends State<HomeScreen> {
     final theme = Theme.of(context);
 
     return Scaffold(
+      backgroundColor: const Color(0xFFF6F7FB),
       appBar: AppBar(
+        backgroundColor: const Color(0xFFF6F7FB),
+        titleSpacing: 20,
         title: Row(
           children: [
-            const Icon(Icons.phone_iphone, color: Colors.blueAccent),
-            const SizedBox(width: 8),
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary,
+                borderRadius: BorderRadius.circular(11),
+              ),
+              child: const Icon(
+                Icons.phone_iphone,
+                color: Colors.white,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 10),
             Text(
               'DTC Phone Store',
-              style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.3,
+              ),
             ),
           ],
         ),
         actions: [
           IconButton(
-            icon: const Badge(
-              label: Text('•'),
-              child: Icon(Icons.shopping_cart_outlined),
-            ),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => CartScreen(cartId: _cartId),
-                ),
-              );
-            },
+            tooltip: 'Tài khoản',
+            icon: const Icon(Icons.account_circle_outlined),
+            onPressed: _openProfile,
           ),
+          IconButton(
+            tooltip: 'Mở giỏ hàng',
+            icon: const Icon(Icons.shopping_bag_outlined),
+            onPressed: _openCart,
+          ),
+          const SizedBox(width: 8),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: () async => _fetchProducts(_searchController.text),
-        child: Column(
-          children: [
-            // Thanh tìm kiếm
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-              child: TextField(
-                controller: _searchController,
-                decoration: InputDecoration(
-                  hintText: 'Tìm kiếm điện thoại (iPhone 15, S24...)...',
-                  prefixIcon: const Icon(Icons.search),
-                  suffixIcon: _searchController.text.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(Icons.clear),
-                          onPressed: () {
-                            _searchController.clear();
-                            _fetchProducts();
-                          },
-                        )
-                      : null,
-                  filled: true,
-                  fillColor: Colors.grey.shade100,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(vertical: 0),
+      body: FutureBuilder<List<Product>>(
+        future: _productsFuture,
+        builder: (context, snapshot) {
+          return RefreshIndicator(
+            onRefresh: _refreshFromGesture,
+            child: CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              slivers: [
+                SliverToBoxAdapter(
+                  child: _buildCatalogHeader(context, snapshot),
                 ),
-                onSubmitted: (value) => _fetchProducts(value),
+                if (snapshot.connectionState == ConnectionState.waiting)
+                  const SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else if (snapshot.hasError)
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: _buildErrorState(context, snapshot.error),
+                  )
+                else if ((snapshot.data ?? const <Product>[]).isEmpty)
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: _buildEmptyState(context),
+                  )
+                else
+                  _buildProductGrid(context, snapshot.data!),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildCatalogHeader(
+    BuildContext context,
+    AsyncSnapshot<List<Product>> snapshot,
+  ) {
+    final theme = Theme.of(context);
+    final products = snapshot.data;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'CỬA HÀNG ĐIỆN THOẠI',
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.primary,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.2,
+            ),
+          ),
+          const SizedBox(height: 7),
+          Text(
+            'Tìm chiếc máy\nhợp với bạn.',
+            style: theme.textTheme.headlineMedium?.copyWith(
+              fontWeight: FontWeight.w800,
+              height: 1.08,
+              letterSpacing: -0.9,
+            ),
+          ),
+          const SizedBox(height: 18),
+          TextField(
+            controller: _searchController,
+            onChanged: _onSearchChanged,
+            textInputAction: TextInputAction.search,
+            decoration: InputDecoration(
+              hintText: 'Tìm tên điện thoại hoặc cấu hình',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: _searchController.text.isEmpty
+                  ? null
+                  : IconButton(
+                      tooltip: 'Xóa nội dung tìm kiếm',
+                      icon: const Icon(Icons.close),
+                      onPressed: () {
+                        _searchController.clear();
+                        _onSearchChanged('');
+                      },
+                    ),
+              filled: true,
+              fillColor: Colors.white,
+              contentPadding: const EdgeInsets.symmetric(vertical: 16),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide.none,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: const BorderSide(color: Color(0xFFE8EAF0)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide(
+                  color: theme.colorScheme.primary,
+                  width: 1.5,
+                ),
               ),
             ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            height: 42,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: _brands.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 8),
+              itemBuilder: (context, index) {
+                final brand = _brands[index];
+                final selected = _selectedBrand == brand;
+                return ChoiceChip(
+                  label: Text(brand),
+                  selected: selected,
+                  showCheckmark: false,
+                  side: BorderSide(
+                    color: selected
+                        ? theme.colorScheme.primary
+                        : const Color(0xFFE5E7EB),
+                  ),
+                  backgroundColor: Colors.white,
+                  selectedColor: theme.colorScheme.primary,
+                  labelStyle: TextStyle(
+                    color: selected ? Colors.white : const Color(0xFF414655),
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  ),
+                  onSelected: (_) => _selectBrand(brand),
+                );
+              },
+            ),
+          ),
+          if (products != null &&
+              snapshot.connectionState == ConnectionState.done &&
+              !snapshot.hasError) ...[
+            const SizedBox(height: 13),
+            Text(
+              '${products.length} sản phẩm',
+              style: theme.textTheme.labelLarge?.copyWith(
+                color: const Color(0xFF777D8A),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 
-            // Danh mục thương hiệu dạng Chip
-            SizedBox(
-              height: 45,
-              child: ListView.separated(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                scrollDirection: Axis.horizontal,
-                itemCount: _brands.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 8),
-                itemBuilder: (context, index) {
-                  final brand = _brands[index];
-                  final isSelected = _selectedBrand == brand;
-                  return ChoiceChip(
-                    label: Text(brand),
-                    selected: isSelected,
-                    selectedColor: theme.colorScheme.primaryContainer,
-                    onSelected: (selected) {
-                      if (selected) {
-                        setState(() => _selectedBrand = brand);
-                        _fetchProducts(brand == 'Tất cả' ? null : brand);
-                      }
-                    },
-                  );
+  Widget _buildProductGrid(BuildContext context, List<Product> products) {
+    return SliverPadding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
+      sliver: SliverLayoutBuilder(
+        builder: (context, constraints) {
+          final width = constraints.crossAxisExtent;
+          final columns = width >= 1000
+              ? 4
+              : width >= 650
+              ? 3
+              : 2;
+          return SliverGrid.builder(
+            itemCount: products.length,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: columns,
+              mainAxisSpacing: 14,
+              crossAxisSpacing: 12,
+              childAspectRatio: width < 400 ? 0.69 : 0.74,
+            ),
+            itemBuilder: (context, index) =>
+                _buildProductCard(context, products[index]),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildProductCard(BuildContext context, Product product) {
+    final theme = Theme.of(context);
+
+    return Card(
+      margin: EdgeInsets.zero,
+      color: Colors.white,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: const BorderSide(color: Color(0xFFE9EBF1)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () async {
+          await _cartIdRestoration;
+          if (!context.mounted) return;
+          await Navigator.push<void>(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ProductDetailScreen(
+                product: product,
+                cartId: _cartId,
+                cartStorage: _cartStorage,
+                service: _service,
+                onCartUpdated: (id) {
+                  if (mounted) setState(() => _cartId = id);
                 },
               ),
             ),
-
-            const SizedBox(height: 8),
-
-            // Lưới sản phẩm điện thoại
+          );
+        },
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
             Expanded(
-              child: FutureBuilder<List<Product>>(
-                future: _productsFuture,
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-
-                  if (snapshot.hasError) {
-                    return Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24.0),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.cloud_off, size: 60, color: Colors.redAccent),
-                            const SizedBox(height: 12),
-                            Text('Lỗi kết nối Backend Medusa:', style: theme.textTheme.titleMedium),
-                            const SizedBox(height: 4),
-                            Text('${snapshot.error}', textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey)),
-                            const SizedBox(height: 16),
-                            ElevatedButton(
-                              onPressed: () => _fetchProducts(),
-                              child: const Text('Thử lại'),
-                            ),
-                          ],
+              flex: 6,
+              child: Container(
+                width: double.infinity,
+                color: const Color(0xFFF7F8FB),
+                alignment: Alignment.center,
+                child: product.thumbnail == null
+                    ? Icon(
+                        Icons.phone_iphone_rounded,
+                        size: 56,
+                        color: theme.colorScheme.primary.withValues(
+                          alpha: 0.35,
                         ),
-                      ),
-                    );
-                  }
-
-                  final products = snapshot.data ?? [];
-
-                  if (products.isEmpty) {
-                    return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.inventory_2_outlined, size: 64, color: Colors.grey.shade400),
-                          const SizedBox(height: 12),
-                          const Text('Chưa tìm thấy điện thoại nào phù hợp'),
-                        ],
-                      ),
-                    );
-                  }
-
-                  return GridView.builder(
-                    padding: const EdgeInsets.all(12),
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      childAspectRatio: 0.68,
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 12,
-                    ),
-                    itemCount: products.length,
-                    itemBuilder: (context, index) {
-                      final product = products[index];
-                      final price = product.minPrice;
-
-                      return Card(
-                        elevation: 1.5,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                        clipBehavior: Clip.antiAlias,
-                        child: InkWell(
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => ProductDetailScreen(
-                                  product: product,
-                                  cartId: _cartId,
-                                  onCartUpdated: (id) => setState(() => _cartId = id),
-                                ),
-                              ),
-                            );
-                          },
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Ảnh máy
-                              Expanded(
-                                flex: 6,
-                                child: Container(
-                                  width: double.infinity,
-                                  color: Colors.grey.shade50,
-                                  child: product.thumbnail != null
-                                      ? Image.network(
-                                          product.thumbnail!,
-                                          fit: BoxFit.contain,
-                                          errorBuilder: (_, __, ___) => const Icon(Icons.phone_android, size: 50, color: Colors.grey),
-                                        )
-                                      : const Icon(Icons.phone_android, size: 50, color: Colors.grey),
-                                ),
-                              ),
-
-                              // Tên & Giá
-                              Expanded(
-                                flex: 4,
-                                child: Padding(
-                                  padding: const EdgeInsets.all(10.0),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(
-                                        product.title,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                                      ),
-                                      Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            price > 0 ? _currencyFormat.format(price) : 'Liên hệ',
-                                            style: TextStyle(
-                                              color: Colors.red.shade700,
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 14,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 2),
-                                          Text(
-                                            '${product.variants.length} phiên bản',
-                                            style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
+                      )
+                    : Image.network(
+                        product.thumbnail!,
+                        width: double.infinity,
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, _, _) => Icon(
+                          Icons.phone_iphone_rounded,
+                          size: 56,
+                          color: theme.colorScheme.primary.withValues(
+                            alpha: 0.35,
                           ),
                         ),
-                      );
-                    },
-                  );
-                },
+                      ),
               ),
+            ),
+            Expanded(
+              flex: 5,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 11),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          product.brand ?? 'Điện thoại',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: theme.colorScheme.primary,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          product.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: const Color(0xFF202533),
+                            fontWeight: FontWeight.w700,
+                            height: 1.2,
+                          ),
+                        ),
+                      ],
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          product.minPrice > 0
+                              ? _currencyFormat.format(product.minPrice)
+                              : 'Xem cấu hình',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            color: const Color(0xFFC24136),
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          '${product.variants.length} phiên bản',
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: const Color(0xFF888E9A),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorState(BuildContext context, Object? error) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.all(28),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.wifi_off_rounded,
+              size: 48,
+              color: Color(0xFF9A5360),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'Chưa tải được catalog',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '$error',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: const Color(0xFF777D8A),
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 18),
+            FilledButton.icon(
+              onPressed: _refreshProducts,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Thử lại'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(BuildContext context) {
+    final hasSearch = _searchController.text.trim().isNotEmpty;
+    final hasBrand = _selectedBrand != 'Tất cả';
+    return Padding(
+      padding: const EdgeInsets.all(28),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.search_off_rounded,
+              size: 50,
+              color: Color(0xFF9AA0AC),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'Không tìm thấy điện thoại phù hợp',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              hasSearch || hasBrand
+                  ? 'Thử đổi từ khóa hoặc chọn thương hiệu khác.'
+                  : 'Catalog hiện chưa có sản phẩm nào.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium
+                  ?.copyWith(color: const Color(0xFF777D8A)),
             ),
           ],
         ),
