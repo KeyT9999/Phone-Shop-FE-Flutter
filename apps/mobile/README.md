@@ -1,17 +1,29 @@
-# mobile
+# DTC Phone Store — Flutter app
 
-A new Flutter project.
+Flutter là ứng dụng khách hàng chính; Medusa Store API là nguồn dữ liệu sản phẩm, giá, tồn kho và giỏ hàng.
 
-## Getting Started
+## Chạy ứng dụng
 
-This project is a starting point for a Flutter application.
+Truyền publishable API key của Medusa bằng compile-time define. Không ghi key hoặc URL môi trường vào source control:
 
-A few resources to get you started if this is your first Flutter project:
+```powershell
+flutter run --dart-define=MEDUSA_PUBLISHABLE_KEY=pk_your_key
+```
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+`MEDUSA_BASE_URL` không bắt buộc khi dùng môi trường local:
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+- Android Emulator mặc định dùng `http://10.0.2.2:9000`.
+- Web, Windows, macOS, Linux và iOS Simulator mặc định dùng `http://localhost:9000`.
+- Với điện thoại thật hoặc backend từ máy khác, truyền URL mà thiết bị có thể truy cập:
+
+```powershell
+flutter run --dart-define=MEDUSA_BASE_URL=https://medusa.example.com --dart-define=MEDUSA_PUBLISHABLE_KEY=pk_your_key
+```
+
+Ứng dụng chọn region có currency `VND` và Việt Nam, rồi truyền `region_id` khi tải giá sản phẩm. Nếu backend chưa cấu hình region đó hoặc key không truy cập được Store API, màn hình catalog sẽ hiện lỗi và nút thử lại.
+
+## Catalog
+
+- Từ khóa và brand dùng `POST /store/search`; danh sách và chi tiết sản phẩm được đọc lại từ Store API để lấy options, giá đã tính và tồn kho theo sales channel.
+- Detail lấy giá từ `calculated_price`, tồn kho từ `+variants.inventory_quantity`, và ghép lựa chọn theo ID option Medusa.
+- Ảnh không có trong dữ liệu backend sẽ dùng biểu tượng điện thoại thay thế.
