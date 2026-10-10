@@ -1,4 +1,4 @@
-import { PRICE_CURRENCIES, toProductPricing } from "../pricing"
+import { PRICE_CURRENCIES, toProductPricing } from "../../../../src/search/helpers/pricing"
 
 describe("product search pricing", () => {
   it("indexes calculated VND prices for the phone store", () => {

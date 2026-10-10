@@ -1,4 +1,4 @@
-import { toProductBrand } from "../metadata"
+import { toProductBrand } from "../../../../src/search/helpers/metadata"
 
 describe("product search metadata", () => {
   it("normalizes a brand value for filtering", () => {

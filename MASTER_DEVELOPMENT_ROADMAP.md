@@ -1,6 +1,19 @@
 # Roadmap phát triển Phone Store — Medusa v2 + Flutter
 
-**Trạng thái cập nhật 2026-09-30:** Phase 0 audit hoàn tất. Phase 1 source và unit đã hoàn tất; chưa chạy seed hoặc xác minh API/database. Phase 2 catalog, Phase 3 cart, và Phase 4 authentication source/test gate đã hoàn tất. INT-03/INT-04, live authentication và cart runtime trên API an toàn vẫn pending; dữ liệu live chưa được kiểm tra.
+**Trạng thái cập nhật 2026-10-10:** UI/UX Flutter và checkout source đã triển khai; dart analyze sạch, 24 Flutter tests pass, Flutter Web release build pass. Backend kết nối database Supabase do chủ dự án cung cấp; seed đã tạo region Vietnam/VND, 20 điện thoại/4 hãng và 137 variants có inventory. App tải catalog và tìm kiếm iPhone thành công. Shipping/COD/order E2E và seed rerun safety chưa xác minh. GitHub Actions mobile workflow đã được thêm; CI chưa chạy từ GitHub. Android/iOS store release và public deploy chưa cấu hình đích/signing.
+
+Tài liệu triển khai: [`tasks/spec.md`](tasks/spec.md) · [`tasks/design.md`](tasks/design.md) · [`tasks/plan.md`](tasks/plan.md) · [`tasks/todo.md`](tasks/todo.md) · [`DEMO_GUIDE.md`](DEMO_GUIDE.md).
+
+Các mục **2–4** bên dưới là baseline audit ban đầu, có một số ghi chú lịch sử trước khi Phase 1–4 được triển khai. Dùng phần trạng thái theo phase và mục 13–14 làm nguồn hiện hành; không dùng baseline đó làm danh sách việc còn lại.
+
+## UI/UX PRO MAX — lần triển khai hiện tại
+
+- Đã áp dụng template **Flagship Tech Boutique** cho 12 màn Flutter bằng theme/tokens tập trung, component dùng chung, navigation 4 tab và layout responsive; không thêm package UI/state.
+- Đã thêm `cartRevision` để cart tab tải lại server response sau khi thêm sản phẩm; widget test bao phủ flow từ catalog tới cart.
+- Đã sửa customer attach theo Store API: gọi endpoint attach customer, sau đó gửi email và shipping/billing address trong cart update. Có service regression test.
+- Kiểm tra local: format sạch, analyzer trực tiếp sạch, 24 tests pass và Web release build pass. Browser smoke-check ở 320 px và desktop hiện error state đúng khi thiếu key; không chứng minh được dữ liệu thật.
+- CI workflow chưa chạy từ GitHub; sẽ chạy khi push/PR hoặc dispatch. Workflow lưu artifact Web 14 ngày; deploy public/native vẫn cần hosting/store và signing được chọn.
+- Theo dõi các bước run/demo còn lại trong [`tasks/ui-ux-plan.md`](tasks/ui-ux-plan.md) và [`DEMO_GUIDE.md`](DEMO_GUIDE.md).
 
 ## 1. Mục tiêu MVP
 
@@ -32,16 +45,16 @@ Phạm vi chính là apps/backend và apps/mobile. apps/storefront có mặt đ�
 | Flutter | apps/mobile độc lập; pubspec yêu cầu Dart ^3.13.2, phụ thuộc http và intl; chưa có package state-management |
 | Next.js reference | apps/storefront có Next.js 15.5.24 và Medusa JS SDK 2.21.1 |
 | Admin | Dùng Medusa Admin tiêu chuẩn; không thấy custom widget/page nghiệp vụ |
-| Runtime | Chưa xác minh Flutter SDK thực tế, backend/DB có chạy, publishable key/channel, provider hoặc API runtime |
+| Runtime | Flutter static analysis đã chạy; backend/DB, publishable key/channel, provider và API runtime chưa xác minh |
 
 ### Baseline checks
 
 - **pnpm run lint:** lỗi tại storefront do thiếu NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY. Root task dừng vì lỗi đó.
 - **Backend lint riêng:** chạy lâu không có kết quả; đã ngắt, trạng thái chưa xác minh.
 - **flutter test:** thất bại vì widget_test.dart còn test Counter và mong tìm text “0”, nhưng PhoneStoreApp không render counter.
-- **flutter analyze:** analysis server lỗi parse JSON LSP trước khi trả diagnostics.
-- **dart analyze:** exit 0, 12 issue mức info, không có error; chủ yếu là super parameter, underscore callback và withOpacity deprecated.
-- Không chạy build, seed/migration hoặc backend integration tests. Không có backend test suite trong file inventory ngoài Jest setup/config; integration sẽ cần PostgreSQL.
+- **flutter analyze:** lần chạy đầu lỗi parse JSON LSP; `dart analyze lib` qua mapped drive exit 0, không có error. Còn info lint (một số thuộc source cũ; radio deprecation trong checkout đã được thay).
+- **flutter build apk --debug:** chưa thành công. Kotlin incremental cache lỗi khi Flutter plugin source ở C: và workspace ở F:. Pub cache cùng ổ F: báo thiếu Windows Developer Mode để tạo plugin symlink.
+- Không chạy test, seed/migration hoặc backend integration tests. Không có backend test suite trong file inventory ngoài Jest setup/config; integration sẽ cần PostgreSQL.
 
 ## 3. Audit hiện trạng
 
@@ -253,13 +266,13 @@ Owner A = backend/Medusa; B = Flutter; C = integration/QA. Vai trò gợi ý, kh
 | INT-04 / P0 | 2–3 / C | FE-02, FE-03, INT-03 | Không bắt buộc sửa file | Catalog→detail→selected variant→cart hoạt động thật | Smoke test với variant có inventory |
 | FE-04 / P0 | 3 / B | INT-04, FE-01 | service; cart_screen.dart; cart_storage.dart; pubspec + lock; cart tests | Cart create/retrieve/add/update/remove; giữ cart ID; totals từ response; **source + tests done** | 12 Flutter tests pass; cart API/device runtime pending INT-04 |
 | FE-05 / P0 | 4 / B | FE-04, INT-02 | Customer model, secure auth storage, Login/Register/Profile, service | Register/login/current customer/logout và giữ JWT; **source + tests done** | 9 Phase 4 tests pass; live Medusa/device auth pending |
-| FE-05B / P0 | 5 / B | FE-05, FE-04 | Customer/address models, profile/address screens and service candidates | Profile phone/address; form địa chỉ VN, validation, dùng address cho cart/checkout | Chốt Medusa address contract; test validation và target runtime |
-| FE-06 / P0 | 6 / B | BE-02, FE-05B | Shipping screen/service candidates | Load options, select option_id, update cart total | Safe backend; không hardcode phí |
-| BE-05 / P0 | 7 / A | BE-02, INT-02 | Region/provider seed/config source | Xác minh COD/manual provider tương thích version/region, không giả payment | Non-prod session/order test; semantics COD cần chấp thuận |
-| FE-07 / P0 | 7 / B | FE-06, BE-05 | Payment/review screens/service candidates | Providers, payment collection/session, review, chống submit lặp | Provider/failure tests; session không đồng nghĩa order |
-| INT-05 / P0 | 7 / C+A+B | FE-07, BE-05, INT-03 | Shared checkout contract; custom backend nếu có gap đã chứng minh | Complete cart; chỉ dùng returned order cho success | E2E safe DB và Admin xác nhận |
-| FE-08 / P0 | 8 / B | INT-05, FE-05B | Success/history/detail screens + order service candidates | Returned order, history/detail với access đúng | App/Admin cùng order ID; guest/account tests |
-| FE-09 / P1 | 9 / B+C | FE-02–FE-08 | Screens/services đã chạm | Chuẩn hóa loading/error/empty/retry/timeout/auth/stock/payment/order | Failure matrix; không snackbar success che backend error |
+| FE-05B / P0 | 5 / B | FE-05, FE-04 | `customer_address.dart`, address book/form, profile, service, checkout | **Source implemented:** VN form/validation, customer CRUD, copy address to cart | `dart analyze lib` pass; tests và live API pending |
+| FE-06 / P0 | 6 / B | BE-02, FE-05B | `shipping_option.dart`, checkout, Medusa service | **Source implemented:** backend options, calculated price, shipping method, refreshed cart totals | `dart analyze lib` pass; real rates/totals pending safe DB |
+| BE-05 / P0 | 7 / A | BE-02, INT-02 | Region/provider seed/config source | System/COD ID source contract checked; no fake payment | Region provider list, session and order still need demo DB check |
+| FE-07 / P0 | 7 / B | FE-06, BE-05 | `payment_provider.dart`, checkout and review | **Source implemented:** system provider, collection/session, guarded complete and response handling | `dart analyze lib` pass; provider/failure tests pending |
+| INT-05 / P0 | 7 / C+A+B | FE-07, BE-05, INT-03 | Shared checkout contract; custom backend only if a proven gap exists | Complete cart; only returned order becomes success | Blocked on safe DB and Admin verification |
+| FE-08 / P0 | 8 / B | INT-05, FE-05B | `customer_order.dart`, success/history/detail screens | **Source implemented:** returned order, authenticated list and snapshot detail | `dart analyze lib` pass; app/Admin order visibility pending |
+| FE-09 / P1 | 9 / B+C | FE-02–FE-08 | Screens/services đã chạm | Error/empty/retry/auth/stock/payment/order recovery paths are present | Failure matrix and widget checks not run |
 | MVP-01 / P2 | 10 / B | FE-08, FE-09 | Optional feature candidates | Promotion/wishlist/recently viewed/sort/filter sau core commerce | Chỉ làm sau khi core flow chạy và có thời gian |
 | TEST-01 / P0 | 11 / C | INT-02, INT-03 | Test plan/checklist | Acceptance matrix, fixture và môi trường safe order | Review trước integration; DB/provider available |
 | TEST-02 / P0 | 11 / A | BE-01–BE-05, TEST-01 | Backend test files candidate | Seed idempotence/search/provider custom behavior | Unit; integration cần PostgreSQL |
@@ -363,7 +376,7 @@ Có thể tách source planning backend và UI inventory sau INT-02. Catalog và
 22. TEST-04 — end-to-end order trên safe environment.
 23. TEST-05 — demo hardening and cleanup.
 
-Implementation đã đi đến Phase 4 auth/profile source/test gate. Phase 4 live gate còn chờ safe Medusa target/customer test account; Phase 5 là customer/address theo yêu cầu gốc.
+Implementation đã có source đến Phase 8: auth, address, shipping, COD checkout và order screens. Automated tests chưa chạy; các live gates từ Phase 4 trở đi vẫn cần safe Medusa target/customer và order test.
 
 ## 11. Risk register
 
@@ -371,15 +384,15 @@ Implementation đã đi đến Phase 4 auth/profile source/test gate. Phase 4 li
 |---|---|---|---|
 | Medusa route/provider khác theo version | Medium/High | Backend khóa 2.21.1; xác minh docs và installed source trước API task | A+C |
 | DB thật khác seed source | Unknown/High | Không seed/reset DB chưa xác minh; test ở DB disposable | A |
-| Seed tạo trùng entity/inventory | High/High | Source unconditional create; thiết kế upsert/skip và test rerun | A |
-| Root backend:seed không có backend script | High/High | Thêm supported seed script và verify Turbo | A |
-| Region/currency/product price mismatch | High/High | Europe/EUR source nhưng Flutter format VND; test calculated price/currency | A+B |
-| Search thiếu hoặc stale VND/brand | High/Medium | Index EUR/USD, thiếu brand metadata; thêm field và freshness strategy | A |
+| Seed rerun an toàn chưa được xác minh trên DB | Medium/High | Source đã có skip/idempotent checks; chỉ chạy hai lần trên DB demo riêng để xác minh runtime | A |
+| Backend seed runtime chưa được xác minh | Medium/High | Root `backend:seed` và script backend đã được nối trong source; xác minh khi OPS-01 có DB demo | A |
+| Region/currency/product price runtime mismatch | Medium/High | Source hiện cấu hình Vietnam/VND và Flutter đọc region VND; API/key/channel/giá thật chưa kiểm tra | A+B |
+| Search index thiếu/stale brand hoặc VND | Medium/High | Source index đã có brand/VND; freshness sau cập nhật Admin và DB index vẫn cần runtime check | A |
 | Stock/price đổi giữa detail và checkout | Medium/High | Medusa cart/complete là authority; xử lý reject | A+B |
 | COD/manual state gây hiểu nhầm đã thu tiền | Medium/High | Verify provider/session/order status; tách “order created” và “payment captured” | A+C |
 | Emulator/browser/device khác host | High/Medium | Base URL configurable theo target; test intended device/CORS | B |
-| Publishable key machine-specific | High/Medium | Bỏ literal khỏi source, inject config, xác minh Admin channel scope | B+A |
-| Flutter test/analyzer stale | High/Medium | Thay Counter test; xử lý LSP issue riêng, dùng dart analyze baseline | B |
+| Publishable key chưa có trong môi trường chạy | High/High | Flutter nhận key qua `--dart-define`; lần mở app 2026-10-08 thiếu key nên catalog không tải | B+A |
+| Flutter build/run trên Windows | Medium/Medium | APK debug build được bằng workaround Gradle; `flutter run` từng lỗi Kotlin incremental cache do project/cache khác ổ; cần xác minh lại hot reload | B |
 | Optional Next storefront mismatch VND | Medium/Low với Flutter MVP | Reference-only; tạo follow-up nếu dùng Next với VN | C |
 | Backend tests thiếu, integration cần PostgreSQL | High/High | Thiết lập isolated test DB; không suy diễn runtime từ source/lint | A+C |
 
@@ -408,20 +421,31 @@ Implementation đã đi đến Phase 4 auth/profile source/test gate. Phase 4 li
 
 ## 13. First 10 P0 tasks
 
-Phase 0, Phase 1 source, Phase 2–3 Flutter source, và Phase 4 auth/profile source/test gate đã hoàn tất. INT-03/INT-04 và live authentication vẫn cần môi trường an toàn; customer/address là Phase 5 kế tiếp.
+Phase 0–8 source đã triển khai. Local automated checks đã pass; ưu tiên còn lại là database demo an toàn, provider/session/complete runtime và Admin order evidence. Run/demo checklist có trong [`DEMO_GUIDE.md`](DEMO_GUIDE.md); full live flow chưa được xác minh.
 
 | # | ID | Dependencies | Owner | First action | Status |
 |---:|---|---|---|---|---|
-| 1 | INT-01 | — | C | Scan manifests, backend/mobile, tests/config, Git status, env names | **Done** |
-| 2 | INT-02 | INT-01 | A+C | Chốt metadata.brand/facet, Storage/Color, seed contract và demo shipping rates | **Done; real rates pending** |
-| 3 | BE-01 | INT-02 | A | Nối Turbo alias tới Medusa CLI seed path và rerun safety | **Source done; runtime pending** |
-| 4 | BE-02 | BE-01, INT-02 | A | Cấu hình VN/VND/channel/location/shipping | **Source done; API pending** |
-| 5 | BE-03 | BE-02 | A | Phone seed 20 model/variants/prices/inventory | **Source + unit done; DB pending** |
-| 6 | BE-04 | BE-03 | A | Thêm brand/VND fields vào product index | **Source + unit done; runtime pending** |
-| 7 | INT-03 | BE-02–BE-04 | C+A | Verify APIs trên DB disposable, không giả định user DB | **Blocked on safe DB target** |
-| 8 | FE-01 | INT-02, BE-04 | B | Tạo API URL/key/region config cho target platforms | **Source done; target API pending INT-03** |
-| 9 | FE-02 | FE-01, BE-04 | B | Dùng brand filter/search backend, debounce và catalog states | **Source done; runtime pending INT-04** |
-| 10 | FE-03 | FE-01, BE-03 | B | Fetch detail và resolve Storage/Color variant với price/stock | **Source done; runtime pending INT-04** |
+| 1 | DEC-01 | — | B | Chốt phone normalization và chính sách input địa phương VN | **Done: +84 normalization; localities nhập text** |
+| 2 | OPS-01 | Safe DB config | A | Khôi phục PostgreSQL demo riêng, kiểm tra backend health | **Blocked: connection timeout 2026-10-08** |
+| 3 | INT-01 | OPS-01 | A+B | Chạy seed/migration trên DB mới, xác minh region/channel/key/catalog/shipping và rerun | **Blocked: chưa có safe DB evidence** |
+| 4 | FE-ADDR-01 | DEC-01 | B | Model + validator địa chỉ VN | **Source done; field validation test coverage pending** |
+| 5 | FE-ADDR-02 | FE-ADDR-01 | B | Customer address list/create/update/delete API | **Attach regression test pass; API/401 runtime pending** |
+| 6 | FE-ADDR-03 | FE-ADDR-02 | B | Address book và form create/edit | **Source done; widget checks pending** |
+| 7 | FE-ADDR-04 | FE-ADDR-03, INT-01 | B | Gắn customer, shipping/billing address vào cart | **Source done; API check cần DB demo** |
+| 8 | FE-SHIP-01/02 | FE-ADDR-04, INT-01 | B | Chọn shipping option và cập nhật server totals | **Source done; rates/totals cần DB demo** |
+| 9 | BE-PAY-01 | INT-01 | A | Xác minh manual/COD provider trên region VN | **Blocked: chưa kiểm tra runtime** |
+| 10 | FE-CHECKOUT-01/02 | FE-SHIP-02, BE-PAY-01 | B | Review, payment session, complete cart chỉ success khi có order | **Source done; provider/session runtime pending** |
+
+Sau đó: FE-ORDER-01/02 → QA-01/02 (E2E trên DB an toàn, xác nhận order trong Admin) → DOC-02 walkthrough demo.
+
+## 14. Run và demo status
+
+- Hướng dẫn thao tác theo từng bước nằm trong [`DEMO_GUIDE.md`](DEMO_GUIDE.md).
+- Source Flutter hiện có catalog, cart, auth, sổ địa chỉ, shipping selection, COD checkout, order success/history/detail.
+- Lần kiểm tra UI local: thiếu publishable key nên catalog hiện hướng dẫn cấu hình; không có request checkout/DB. Không chạy seed/migration hoặc API thật.
+- Kiểm tra local: `dart format` sạch, `dart analyze` sạch, 24 tests pass, Web release build pass; `flutter analyze` wrapper lỗi JSON LSP riêng trên Windows. CI workflow đã thêm nhưng chưa chạy từ GitHub.
+- Bản demo Web cần Medusa backend và publishable key reachable. Native Android/iOS build/signing vẫn cần xác minh riêng trên CI có SDK/credentials phù hợp.
+- Chỉ đánh dấu MVP demo hoàn tất sau khi app tạo order thật bằng COD/manual và cùng order hiện trong app lẫn Medusa Admin.
 
 ## Official references
 
@@ -431,6 +455,8 @@ Phase 0, Phase 1 source, Phase 2–3 Flutter source, và Phase 4 auth/profile so
 - [Medusa create/persist cart](https://docs.medusajs.com/resources/storefront-development/cart)
 - [Medusa retrieve cart and format prices](https://docs.medusajs.com/resources/storefront-development/cart/retrieve)
 - [Medusa add/update/remove cart line items](https://docs.medusajs.com/resources/storefront-development/cart/manage-items)
+- [Customer address flow](https://docs.medusajs.com/resources/storefront-development/checkout/address)
+- [Manage customer addresses](https://docs.medusajs.com/api/store/customers/list-customers-addresses)
 - [Shared Preferences package](https://pub.dev/packages/shared_preferences)
 - [List Medusa regions](https://docs.medusajs.com/resources/storefront-development/regions/list)
 - [Retrieve product prices](https://docs.medusajs.com/resources/storefront-development/products/price)

@@ -4,6 +4,8 @@ import 'package:intl/intl.dart';
 import '../models/product.dart';
 import '../services/cart_storage.dart';
 import '../services/medusa_service.dart';
+import '../theme/app_theme.dart';
+import '../widgets/app_components.dart';
 
 class ProductDetailScreen extends StatefulWidget {
   const ProductDetailScreen({
@@ -38,6 +40,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   final Map<String, String> _selectedOptions = {};
   int _quantity = 1;
   String? _activeCartId;
+  int _imageIndex = 0;
   bool _isLoadingDetail = true;
   bool _isAdding = false;
   String? _detailError;
@@ -131,7 +134,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       if (activeCartId.isEmpty) {
         activeCartId = await _service.createCart();
         _activeCartId = activeCartId;
-        widget.onCartUpdated?.call(activeCartId);
         try {
           await _cartStorage.saveCartId(activeCartId);
         } catch (_) {
@@ -146,11 +148,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       );
 
       if (mounted) {
+        widget.onCartUpdated?.call(activeCartId);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             backgroundColor: storageWarning
-                ? Colors.orange.shade800
-                : Colors.green.shade700,
+                ? AppColors.warning
+                : AppColors.success,
             content: Text(
               storageWarning
                   ? 'Đã thêm ${variant.title}. Không thể lưu giỏ hàng sau khi thoát app.'
@@ -164,7 +167,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            backgroundColor: Colors.red.shade700,
+            backgroundColor: AppColors.error,
             content: Text('$error'),
             behavior: SnackBarBehavior.floating,
           ),
@@ -186,11 +189,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         !_isAdding;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F7FB),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFFF6F7FB),
-        title: const Text('Chi tiết sản phẩm'),
-      ),
+      appBar: AppBar(title: const Text('Chi tiết sản phẩm')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         children: [
@@ -202,33 +201,21 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             Text(
               'Đang cập nhật giá và tồn kho từ Medusa…',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: const Color(0xFF777D8A),
+                color: AppColors.textMuted,
               ),
             ),
             const SizedBox(height: 8),
           ],
           if (_detailError != null) _buildDetailError(context),
-          Text(
-            _product.brand ?? 'Điện thoại',
-            style: theme.textTheme.labelLarge?.copyWith(
-              color: theme.colorScheme.primary,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            _product.title,
-            style: theme.textTheme.headlineSmall?.copyWith(
-              color: const Color(0xFF202533),
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.5,
-            ),
+          AppPageHeading(
+            eyebrow: _product.brand ?? 'Điện thoại',
+            title: _product.title,
           ),
           const SizedBox(height: 9),
           Text(
             _selectedPriceLabel(selectedVariant),
             style: theme.textTheme.titleLarge?.copyWith(
-              color: const Color(0xFFC24136),
+              color: AppColors.price,
               fontWeight: FontWeight.w800,
             ),
           ),
@@ -236,7 +223,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             const SizedBox(height: 9),
             _buildStockStatus(context, selectedVariant),
           ],
-          const SizedBox(height: 22),
+          const SizedBox(height: AppSpacing.xl),
           if (_product.options.isEmpty)
             _buildNoOptionsNotice(context)
           else
@@ -247,19 +234,19 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           ],
           if (_product.description?.trim().isNotEmpty == true) ...[
             const SizedBox(height: 20),
-            _buildSectionTitle(context, 'Mô tả'),
+            const AppSectionHeading(title: 'Mô tả'),
             const SizedBox(height: 8),
             Text(
               _product.description!,
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: const Color(0xFF555B68),
+                color: AppColors.textMuted,
                 height: 1.55,
               ),
             ),
           ],
           if (_specificationRows.isNotEmpty) ...[
             const SizedBox(height: 22),
-            _buildSectionTitle(context, 'Thông số kỹ thuật'),
+            const AppSectionHeading(title: 'Thông số kỹ thuật'),
             const SizedBox(height: 10),
             _buildSpecifications(context),
           ],
@@ -270,8 +257,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         child: Container(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
           decoration: const BoxDecoration(
-            color: Colors.white,
-            border: Border(top: BorderSide(color: Color(0xFFE9EBF1))),
+            color: AppColors.surface,
+            border: Border(top: BorderSide(color: AppColors.border)),
           ),
           child: SizedBox(
             height: 50,
@@ -310,39 +297,71 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   }
 
   Widget _buildHeroImage(BuildContext context) {
-    final imageUrl =
-        _product.thumbnail ??
-        (_product.images.isEmpty ? null : _product.images.first);
-    return Container(
-      height: 270,
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFFE9EBF1)),
-      ),
-      alignment: Alignment.center,
-      child: imageUrl == null
-          ? Icon(
-              Icons.phone_iphone_rounded,
-              size: 88,
-              color: Theme.of(context).colorScheme.primary
-                  .withValues(alpha: 0.35),
-            )
-          : ClipRRect(
-              borderRadius: BorderRadius.circular(22),
-              child: Image.network(
-                imageUrl,
-                fit: BoxFit.contain,
-                errorBuilder: (_, _, _) => Icon(
-                  Icons.phone_iphone_rounded,
-                  size: 88,
-                  color: Theme.of(context).colorScheme.primary
-                      .withValues(alpha: 0.35),
-                ),
+    final images = _productImages;
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: SizedBox(
+        height: 300,
+        width: double.infinity,
+        child: Stack(
+          alignment: Alignment.bottomCenter,
+          children: [
+            Positioned.fill(
+              child: PageView.builder(
+                itemCount: images.isEmpty ? 1 : images.length,
+                onPageChanged: (index) => setState(() => _imageIndex = index),
+                itemBuilder: (context, index) {
+                  if (images.isEmpty) {
+                    return const _ProductImagePlaceholder(size: 88);
+                  }
+                  return ColoredBox(
+                    color: AppColors.imageSurface,
+                    child: Image.network(
+                      images[index],
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, _, _) =>
+                          const _ProductImagePlaceholder(size: 88),
+                    ),
+                  );
+                },
               ),
             ),
+            if (images.length > 1)
+              Padding(
+                padding: const EdgeInsets.only(bottom: AppSpacing.md),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (var index = 0; index < images.length; index++)
+                      Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 3),
+                        width: index == _imageIndex ? 18 : 6,
+                        height: 6,
+                        decoration: BoxDecoration(
+                          color: index == _imageIndex
+                              ? AppColors.primary
+                              : AppColors.textMuted.withValues(alpha: 0.35),
+                          borderRadius: BorderRadius.circular(99),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
     );
+  }
+
+  List<String> get _productImages {
+    final images = <String>[];
+    final thumbnail = _product.thumbnail?.trim();
+    if (thumbnail != null && thumbnail.isNotEmpty) images.add(thumbnail);
+    for (final image in _product.images) {
+      final url = image.trim();
+      if (url.isNotEmpty && !images.contains(url)) images.add(url);
+    }
+    return images;
   }
 
   Widget _buildDetailError(BuildContext context) {
@@ -350,13 +369,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF4E5),
-        borderRadius: BorderRadius.circular(14),
+        color: AppColors.warningSurface,
+        borderRadius: BorderRadius.circular(AppRadii.md),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.warning_amber_rounded, color: Color(0xFF9A6500)),
+          const Icon(Icons.warning_amber_rounded, color: AppColors.warning),
           const SizedBox(width: 9),
           Expanded(
             child: Column(
@@ -390,24 +409,24 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     final String text;
 
     if (variant.isBackorder) {
-      color = const Color(0xFF825B12);
+      color = AppColors.warning;
       icon = Icons.schedule_outlined;
       text = 'Có thể đặt trước';
     } else if (variant.manageInventory == false) {
-      color = const Color(0xFF23734D);
+      color = AppColors.success;
       icon = Icons.check_circle_outline;
       text = 'Có thể đặt hàng';
     } else if (variant.inventoryQuantity != null &&
         variant.inventoryQuantity! > 0) {
-      color = const Color(0xFF23734D);
+      color = AppColors.success;
       icon = Icons.check_circle_outline;
       text = 'Còn ${variant.inventoryQuantity} sản phẩm';
     } else if (variant.isAvailable == false) {
-      color = const Color(0xFF9A5360);
+      color = AppColors.error;
       icon = Icons.remove_circle_outline;
       text = 'Tạm hết hàng';
     } else {
-      color = const Color(0xFF777D8A);
+      color = AppColors.textMuted;
       icon = Icons.help_outline;
       text = 'Chưa xác minh tồn kho';
     }
@@ -437,7 +456,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           Text(
             option.title,
             style: theme.textTheme.titleSmall?.copyWith(
-              color: const Color(0xFF303646),
+              color: AppColors.text,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -456,16 +475,14 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     ? (_) => _selectOption(option, value)
                     : null,
                 backgroundColor: Colors.white,
-                selectedColor: theme.colorScheme.primaryContainer,
+                selectedColor: AppColors.primarySoft,
                 side: BorderSide(
                   color: selected
                       ? theme.colorScheme.primary
-                      : const Color(0xFFE2E5EC),
+                      : AppColors.border,
                 ),
                 labelStyle: TextStyle(
-                  color: available
-                      ? const Color(0xFF303646)
-                      : const Color(0xFF9AA0AC),
+                  color: available ? AppColors.text : AppColors.textMuted,
                   fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                 ),
               );
@@ -514,16 +531,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     );
   }
 
-  Widget _buildSectionTitle(BuildContext context, String title) {
-    return Text(
-      title,
-      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-        color: const Color(0xFF202533),
-        fontWeight: FontWeight.w800,
-      ),
-    );
-  }
-
   List<(String, String)> get _specificationRows {
     const labels = <String, String>{
       'screen': 'Màn hình',
@@ -548,12 +555,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   }
 
   Widget _buildSpecifications(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE9EBF1)),
-      ),
+    return AppSurface(
+      padding: EdgeInsets.zero,
       child: Column(
         children: [
           for (var index = 0; index < _specificationRows.length; index++) ...[
@@ -568,7 +571,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     child: Text(
                       _specificationRows[index].$1,
                       style: Theme.of(context).textTheme.bodySmall
-                          ?.copyWith(color: const Color(0xFF777D8A)),
+                          ?.copyWith(color: AppColors.textMuted),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -576,7 +579,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     child: Text(
                       _specificationRows[index].$2,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: const Color(0xFF303646),
+                        color: AppColors.text,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -594,7 +597,25 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     return Text(
       'Sản phẩm chưa có tùy chọn phiên bản.',
       style: Theme.of(context).textTheme.bodyMedium
-          ?.copyWith(color: const Color(0xFF777D8A)),
+          ?.copyWith(color: AppColors.textMuted),
     );
   }
+}
+
+class _ProductImagePlaceholder extends StatelessWidget {
+  const _ProductImagePlaceholder({required this.size});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => ColoredBox(
+    color: AppColors.imageSurface,
+    child: Center(
+      child: Icon(
+        Icons.phone_iphone_rounded,
+        size: size,
+        color: AppColors.primary.withValues(alpha: 0.35),
+      ),
+    ),
+  );
 }

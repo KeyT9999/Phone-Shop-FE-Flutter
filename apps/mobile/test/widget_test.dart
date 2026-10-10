@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:mobile/models/customer.dart';
+import 'package:mobile/models/customer_order.dart';
 import 'package:mobile/models/product.dart';
 import 'package:mobile/screens/cart_screen.dart';
 import 'package:mobile/screens/home_screen.dart';
 import 'package:mobile/screens/product_detail_screen.dart';
+import 'package:mobile/navigation/store_shell.dart';
 import 'package:mobile/services/cart_storage.dart';
 import 'package:mobile/services/medusa_service.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
@@ -38,11 +41,11 @@ void main() {
     expect(find.text('2'), findsOneWidget);
     expect(find.text('Tổng từ Medusa'), findsOneWidget);
     expect(find.textContaining('2.000.000'), findsNWidgets(2));
+    expect(find.text('Tiếp tục thanh toán'), findsOneWidget);
     expect(
       find.text('Thanh toán sẽ được bổ sung ở phase tiếp theo.'),
-      findsOneWidget,
+      findsNothing,
     );
-    expect(find.text('Đặt hàng ngay'), findsNothing);
   });
 
   testWidgets('updates quantity and uses the new server total', (tester) async {
@@ -199,18 +202,57 @@ void main() {
     expect(service.lastRetrievedCartId, 'cart_restored');
     expect(find.text('Galaxy S26'), findsOneWidget);
   });
+
+  testWidgets('refreshes the shell cart after adding a product', (
+    tester,
+  ) async {
+    final service = _FakeCartService(listProduct: true);
+    final storage = CartStorage();
+    await storage.clearCartId();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StoreShell(service: service, storage: storage),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('Galaxy S26').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Galaxy S26').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Thêm vào giỏ hàng'));
+    await tester.pumpAndSettle();
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(
+        of: find.byType(NavigationBar),
+        matching: find.text('Giỏ hàng'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(service.lastRetrievedCartId, 'cart_1');
+    expect(find.text('Galaxy S26'), findsOneWidget);
+    expect(find.text('Tổng từ Medusa'), findsOneWidget);
+  });
 }
 
 class _FakeCartService extends MedusaService {
-  _FakeCartService({this.quantity = 2, this.failReads = false})
-    : super(
-        client: MockClient((_) async => http.Response('{}', 500)),
-        apiBaseUrl: 'http://localhost:9000',
-        publishableApiKeyOverride: 'pk_test',
-      );
+  _FakeCartService({
+    this.quantity = 2,
+    this.failReads = false,
+    this.listProduct = false,
+  }) : super(
+         client: MockClient((_) async => http.Response('{}', 500)),
+         apiBaseUrl: 'http://localhost:9000',
+         publishableApiKeyOverride: 'pk_test',
+       );
 
   int? quantity;
   bool failReads;
+  bool listProduct;
   int? lastUpdatedQuantity;
   int removeCount = 0;
   int createCartCount = 0;
@@ -220,7 +262,30 @@ class _FakeCartService extends MedusaService {
 
   @override
   Future<List<Product>> getProducts({String? query, String? brand}) async =>
-      const [];
+      listProduct ? [_product()] : const [];
+
+  @override
+  Future<List<CustomerOrder>> getCustomerOrders({
+    int offset = 0,
+    int limit = 20,
+  }) async => const [];
+
+  @override
+  Future<Customer?> getCurrentCustomer() async => null;
+
+  Product _product() => const Product(
+    id: 'prod_1',
+    title: 'Galaxy S26',
+    images: [],
+    variants: [
+      ProductVariant(
+        id: 'variant_1',
+        title: '256 GB · Đen',
+        price: 1000000,
+        manageInventory: false,
+      ),
+    ],
+  );
 
   @override
   Future<Product> getProductDetail(String id) async => const Product(

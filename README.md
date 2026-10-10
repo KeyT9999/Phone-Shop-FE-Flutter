@@ -52,6 +52,15 @@ A production-ready monorepo starter for direct-to-consumer ecommerce stores powe
 - Customer accounts with order history and address management
 - Order transfer between accounts
 
+## Phone Store Flutter demo
+
+This project also includes a Flutter customer app backed by Medusa Store API. Source covers catalog, cart, authentication, Vietnamese customer addresses, backend-priced shipping, COD checkout, order confirmation, and customer order history. The live checkout still needs a safe Medusa database, a configured publishable key, and provider/order verification.
+
+- [Run and demo guide](DEMO_GUIDE.md)
+- [Current roadmap](MASTER_DEVELOPMENT_ROADMAP.md)
+- [Implementation checklist](tasks/todo.md)
+- [Feature design](tasks/design.md)
+
 ## Getting Started
 
 ### Deploy with Medusa Cloud

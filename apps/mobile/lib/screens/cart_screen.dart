@@ -3,6 +3,9 @@ import 'package:intl/intl.dart';
 
 import '../services/cart_storage.dart';
 import '../services/medusa_service.dart';
+import '../theme/app_theme.dart';
+import '../widgets/app_components.dart';
+import 'checkout_screen.dart';
 
 class CartScreen extends StatefulWidget {
   const CartScreen({
@@ -10,13 +13,17 @@ class CartScreen extends StatefulWidget {
     this.cartId,
     this.service,
     this.storage,
+    this.cartRevision = 0,
     this.onCartIdChanged,
+    this.onContinueShopping,
   });
 
   final String? cartId;
   final MedusaService? service;
   final CartStorage? storage;
+  final int cartRevision;
   final ValueChanged<String?>? onCartIdChanged;
+  final VoidCallback? onContinueShopping;
 
   @override
   State<CartScreen> createState() => _CartScreenState();
@@ -29,6 +36,8 @@ class _CartScreenState extends State<CartScreen> {
 
   Map<String, dynamic>? _cartData;
   final Set<String> _busyItemIds = {};
+  String? _formatterCurrencyCode;
+  NumberFormat? _currencyFormatter;
   bool _isLoading = true;
   String? _error;
 
@@ -41,11 +50,18 @@ class _CartScreenState extends State<CartScreen> {
   String get _currencyCode =>
       _cartData?['currency_code']?.toString().toUpperCase() ?? 'VND';
 
-  NumberFormat get _currencyFormat => NumberFormat.currency(
-    locale: 'vi_VN',
-    name: _currencyCode,
-    decimalDigits: _currencyCode == 'VND' ? 0 : null,
-  );
+  NumberFormat get _currencyFormat {
+    final currencyCode = _currencyCode;
+    if (_currencyFormatter == null || _formatterCurrencyCode != currencyCode) {
+      _formatterCurrencyCode = currencyCode;
+      _currencyFormatter = NumberFormat.currency(
+        locale: 'vi_VN',
+        name: currencyCode,
+        decimalDigits: currencyCode == 'VND' ? 0 : null,
+      );
+    }
+    return _currencyFormatter!;
+  }
 
   @override
   void initState() {
@@ -54,6 +70,30 @@ class _CartScreenState extends State<CartScreen> {
     _storage = widget.storage ?? CartStorage.instance;
     _cartId = widget.cartId;
     _loadCart();
+    _restoreCartId();
+  }
+
+  @override
+  void didUpdateWidget(covariant CartScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.cartId != widget.cartId && widget.cartId != _cartId) {
+      _cartId = widget.cartId;
+      _loadCart();
+    } else if (oldWidget.cartRevision != widget.cartRevision) {
+      _loadCart();
+    }
+  }
+
+  Future<void> _restoreCartId() async {
+    if (_cartId != null) return;
+    try {
+      final cartId = await _storage.readCartId();
+      if (!mounted || _cartId != null || cartId == null) return;
+      setState(() => _cartId = cartId);
+      await _loadCart();
+    } catch (_) {
+      // The empty state remains usable if local storage is unavailable.
+    }
   }
 
   Future<void> _loadCart() async {
@@ -152,6 +192,34 @@ class _CartScreenState extends State<CartScreen> {
     });
   }
 
+  Future<void> _openCheckout() async {
+    final cartId = _cartId;
+    if (cartId == null || cartId.isEmpty) return;
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CheckoutScreen(
+          cartId: cartId,
+          service: _service,
+          storage: _storage,
+          onCartIdChanged: (id) {
+            widget.onCartIdChanged?.call(id);
+            if (mounted) setState(() => _cartId = id);
+          },
+        ),
+      ),
+    );
+    if (mounted) await _loadCart();
+  }
+
+  void _continueShopping() {
+    if (widget.onContinueShopping != null) {
+      widget.onContinueShopping!();
+    } else if (Navigator.of(context).canPop()) {
+      Navigator.pop(context);
+    }
+  }
+
   void _showMessage(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
@@ -160,10 +228,9 @@ class _CartScreenState extends State<CartScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final items = _items;
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F7FB),
       appBar: AppBar(
-        backgroundColor: const Color(0xFFF6F7FB),
         title: const Text('Giỏ hàng'),
         actions: [
           if (_cartId != null && !_isLoading && _error == null)
@@ -175,20 +242,26 @@ class _CartScreenState extends State<CartScreen> {
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppStateView(
+              title: 'Đang tải giỏ hàng',
+              icon: Icons.shopping_bag_outlined,
+              isLoading: true,
+            )
           : _error != null
           ? _buildErrorState(context)
-          : _items.isEmpty
+          : items.isEmpty
           ? _buildEmptyState(context)
-          : _buildItemsList(context),
-      bottomNavigationBar: !_isLoading && _error == null && _items.isNotEmpty
+          : _buildItemsList(context, items),
+      bottomNavigationBar: !_isLoading && _error == null && items.isNotEmpty
           ? _buildTotals(context)
           : null,
     );
   }
 
-  Widget _buildItemsList(BuildContext context) {
-    final items = _items;
+  Widget _buildItemsList(
+    BuildContext context,
+    List<Map<String, dynamic>> items,
+  ) {
     return RefreshIndicator(
       onRefresh: _loadCart,
       child: ListView.separated(
@@ -208,13 +281,8 @@ class _CartScreenState extends State<CartScreen> {
     final busy = _busyItemIds.contains(itemId);
     final thumbnail = item['thumbnail']?.toString();
 
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE9EBF1)),
-      ),
+    return AppSurface(
+      padding: const EdgeInsets.all(AppSpacing.sm),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -222,7 +290,7 @@ class _CartScreenState extends State<CartScreen> {
             width: 76,
             height: 88,
             decoration: BoxDecoration(
-              color: const Color(0xFFF6F7FB),
+              color: AppColors.imageSurface,
               borderRadius: BorderRadius.circular(12),
             ),
             alignment: Alignment.center,
@@ -263,10 +331,9 @@ class _CartScreenState extends State<CartScreen> {
                     ),
                     IconButton(
                       tooltip: 'Xóa ${item['title'] ?? 'sản phẩm'}',
-                      visualDensity: VisualDensity.compact,
                       onPressed: busy ? null : () => _removeItem(item),
                       icon: const Icon(Icons.delete_outline_rounded),
-                      color: const Color(0xFF777D8A),
+                      color: AppColors.textMuted,
                     ),
                   ],
                 ),
@@ -274,14 +341,14 @@ class _CartScreenState extends State<CartScreen> {
                   Text(
                     item['variant_title'].toString(),
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: const Color(0xFF777D8A),
+                      color: AppColors.textMuted,
                     ),
                   ),
                 const SizedBox(height: 5),
                 Text(
                   _currencyFormat.format(_amount(item['unit_price'])),
                   style: theme.textTheme.titleSmall?.copyWith(
-                    color: const Color(0xFFC24136),
+                    color: AppColors.price,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -331,8 +398,6 @@ class _CartScreenState extends State<CartScreen> {
   }) {
     return IconButton(
       tooltip: tooltip,
-      visualDensity: VisualDensity.compact,
-      constraints: const BoxConstraints.tightFor(width: 34, height: 34),
       padding: EdgeInsets.zero,
       onPressed: onPressed,
       icon: Icon(icon, size: 18),
@@ -349,8 +414,8 @@ class _CartScreenState extends State<CartScreen> {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
       decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: Color(0xFFE9EBF1))),
+        color: AppColors.surface,
+        border: Border(top: BorderSide(color: AppColors.border)),
       ),
       child: SafeArea(
         top: false,
@@ -363,7 +428,7 @@ class _CartScreenState extends State<CartScreen> {
               _totalRow(
                 'Ưu đãi',
                 '-${_currencyFormat.format(_amount(discount))}',
-                valueColor: const Color(0xFF23734D),
+                valueColor: AppColors.success,
               ),
             if (_amount(shipping) > 0)
               _totalRow(
@@ -384,18 +449,17 @@ class _CartScreenState extends State<CartScreen> {
                 Text(
                   _currencyFormat.format(_amount(total)),
                   style: theme.textTheme.titleLarge?.copyWith(
-                    color: const Color(0xFFC24136),
+                    color: AppColors.price,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            Text(
-              'Thanh toán sẽ được bổ sung ở phase tiếp theo.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: const Color(0xFF777D8A),
-              ),
+            const SizedBox(height: AppSpacing.sm),
+            AppPrimaryAction(
+              onPressed: _openCheckout,
+              icon: Icons.arrow_forward_rounded,
+              label: 'Tiếp tục thanh toán',
             ),
           ],
         ),
@@ -411,13 +475,13 @@ class _CartScreenState extends State<CartScreen> {
           Expanded(
             child: Text(
               label,
-              style: const TextStyle(color: Color(0xFF777D8A)),
+              style: const TextStyle(color: AppColors.textMuted),
             ),
           ),
           Text(
             value,
             style: TextStyle(
-              color: valueColor ?? const Color(0xFF303646),
+              color: valueColor ?? AppColors.text,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -427,7 +491,6 @@ class _CartScreenState extends State<CartScreen> {
   }
 
   Widget _buildEmptyState(BuildContext context) {
-    final theme = Theme.of(context);
     return RefreshIndicator(
       onRefresh: _loadCart,
       child: ListView(
@@ -443,34 +506,31 @@ class _CartScreenState extends State<CartScreen> {
                   width: 112,
                   height: 112,
                   decoration: BoxDecoration(
-                    color: theme.colorScheme.primaryContainer,
+                    color: AppColors.primarySoft,
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
                     Icons.shopping_bag_outlined,
                     size: 48,
-                    color: theme.colorScheme.primary,
+                    color: AppColors.primary,
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: AppSpacing.lg),
                 Text(
                   'Giỏ hàng đang trống',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
+                  style: Theme.of(context).textTheme.titleLarge
+                      ?.copyWith(fontWeight: FontWeight.w800),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: AppSpacing.xs),
                 Text(
                   'Thêm một chiếc điện thoại bạn thích để xem tổng tiền tại đây.',
                   textAlign: TextAlign.center,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: const Color(0xFF777D8A),
-                    height: 1.45,
-                  ),
+                  style: Theme.of(context).textTheme.bodyMedium
+                      ?.copyWith(color: AppColors.textMuted, height: 1.45),
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: AppSpacing.lg),
                 FilledButton.tonal(
-                  onPressed: () => Navigator.pop(context),
+                  onPressed: _continueShopping,
                   child: const Text('Tiếp tục xem điện thoại'),
                 ),
               ],
@@ -482,46 +542,22 @@ class _CartScreenState extends State<CartScreen> {
   }
 
   Widget _buildErrorState(BuildContext context) {
-    final theme = Theme.of(context);
-    return Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(28),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.cloud_off_outlined,
-              size: 54,
-              color: theme.colorScheme.error,
-            ),
-            const SizedBox(height: 14),
-            Text(
-              'Chưa tải được giỏ hàng',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _error!,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: const Color(0xFF777D8A),
-              ),
-            ),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: _loadCart,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Thử lại'),
-            ),
-            TextButton(
-              onPressed: _forgetCart,
-              child: const Text('Xóa mã giỏ đã lưu trên thiết bị'),
-            ),
-          ],
+    return Column(
+      children: [
+        Expanded(
+          child: AppStateView(
+            title: 'Chưa tải được giỏ hàng',
+            description: _error,
+            icon: Icons.cloud_off_outlined,
+            actionLabel: 'Thử lại',
+            onAction: _loadCart,
+          ),
         ),
-      ),
+        TextButton(
+          onPressed: _forgetCart,
+          child: const Text('Xóa mã giỏ đã lưu trên thiết bị'),
+        ),
+      ],
     );
   }
 

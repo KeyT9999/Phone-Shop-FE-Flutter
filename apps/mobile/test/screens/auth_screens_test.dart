@@ -45,6 +45,8 @@ void main() {
     expect(find.text('Mai Nguyen'), findsNWidgets(2));
     expect(find.text('mai@example.com'), findsNWidgets(2));
 
+    await tester.ensureVisible(find.text('Đăng xuất'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Đăng xuất'));
     await tester.pumpAndSettle();
 

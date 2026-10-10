@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -6,14 +7,29 @@ import 'package:intl/intl.dart';
 import '../models/product.dart';
 import '../services/cart_storage.dart';
 import '../services/medusa_service.dart';
+import '../theme/app_theme.dart';
+import '../widgets/app_components.dart';
 import 'cart_screen.dart';
 import 'profile_screen.dart';
 import 'product_detail_screen.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, this.service});
+  const HomeScreen({
+    super.key,
+    this.service,
+    this.storage,
+    this.onOpenCart,
+    this.onOpenProfile,
+    this.onCartIdChanged,
+    this.onCartContentsChanged,
+  });
 
   final MedusaService? service;
+  final CartStorage? storage;
+  final VoidCallback? onOpenCart;
+  final VoidCallback? onOpenProfile;
+  final ValueChanged<String?>? onCartIdChanged;
+  final ValueChanged<String>? onCartContentsChanged;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -41,7 +57,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _service = widget.service ?? MedusaService.instance;
-    _cartStorage = CartStorage.instance;
+    _cartStorage = widget.storage ?? CartStorage.instance;
     _cartIdRestoration = _restoreCartId();
     _productsFuture = _loadProducts();
   }
@@ -49,7 +65,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _restoreCartId() async {
     try {
       final cartId = await _cartStorage.readCartId();
-      if (mounted) setState(() => _cartId = cartId);
+      if (mounted) {
+        setState(() => _cartId = cartId);
+        widget.onCartIdChanged?.call(cartId);
+      }
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -61,6 +80,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _openCart() async {
     await _cartIdRestoration;
     if (!mounted) return;
+    if (widget.onOpenCart != null) {
+      widget.onOpenCart!();
+      return;
+    }
 
     await Navigator.push<void>(
       context,
@@ -71,6 +94,7 @@ class _HomeScreenState extends State<HomeScreen> {
           storage: _cartStorage,
           onCartIdChanged: (id) {
             if (mounted) setState(() => _cartId = id);
+            widget.onCartIdChanged?.call(id);
           },
         ),
       ),
@@ -78,6 +102,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openProfile() async {
+    if (widget.onOpenProfile != null) {
+      widget.onOpenProfile!();
+      return;
+    }
     await Navigator.push<void>(
       context,
       MaterialPageRoute(builder: (_) => ProfileScreen(service: _service)),
@@ -92,7 +120,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _refreshProducts() {
-    setState(() => _productsFuture = _loadProducts());
+    setState(() {
+      _productsFuture = _loadProducts();
+    });
   }
 
   void _onSearchChanged(String value) {
@@ -133,9 +163,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F7FB),
       appBar: AppBar(
-        backgroundColor: const Color(0xFFF6F7FB),
         titleSpacing: 20,
         title: Row(
           children: [
@@ -162,19 +190,21 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ],
         ),
-        actions: [
-          IconButton(
-            tooltip: 'Tài khoản',
-            icon: const Icon(Icons.account_circle_outlined),
-            onPressed: _openProfile,
-          ),
-          IconButton(
-            tooltip: 'Mở giỏ hàng',
-            icon: const Icon(Icons.shopping_bag_outlined),
-            onPressed: _openCart,
-          ),
-          const SizedBox(width: 8),
-        ],
+        actions: widget.onOpenCart == null && widget.onOpenProfile == null
+            ? [
+                IconButton(
+                  tooltip: 'Tài khoản',
+                  icon: const Icon(Icons.account_circle_outlined),
+                  onPressed: _openProfile,
+                ),
+                IconButton(
+                  tooltip: 'Mở giỏ hàng',
+                  icon: const Icon(Icons.shopping_bag_outlined),
+                  onPressed: _openCart,
+                ),
+                const SizedBox(width: 8),
+              ]
+            : null,
       ),
       body: FutureBuilder<List<Product>>(
         future: _productsFuture,
@@ -185,7 +215,12 @@ class _HomeScreenState extends State<HomeScreen> {
               physics: const AlwaysScrollableScrollPhysics(),
               slivers: [
                 SliverToBoxAdapter(
-                  child: _buildCatalogHeader(context, snapshot),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 1200),
+                      child: _buildCatalogHeader(context, snapshot),
+                    ),
+                  ),
                 ),
                 if (snapshot.connectionState == ConnectionState.waiting)
                   const SliverFillRemaining(
@@ -216,32 +251,19 @@ class _HomeScreenState extends State<HomeScreen> {
     BuildContext context,
     AsyncSnapshot<List<Product>> snapshot,
   ) {
-    final theme = Theme.of(context);
     final products = snapshot.data;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'CỬA HÀNG ĐIỆN THOẠI',
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: theme.colorScheme.primary,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1.2,
-            ),
+          const AppPageHeading(
+            eyebrow: 'Cửa hàng điện thoại',
+            title: 'Tìm chiếc máy hợp với bạn.',
+            subtitle: 'Khám phá theo thương hiệu, chọn phiên bản phù hợp.',
           ),
-          const SizedBox(height: 7),
-          Text(
-            'Tìm chiếc máy\nhợp với bạn.',
-            style: theme.textTheme.headlineMedium?.copyWith(
-              fontWeight: FontWeight.w800,
-              height: 1.08,
-              letterSpacing: -0.9,
-            ),
-          ),
-          const SizedBox(height: 18),
+          const SizedBox(height: AppSpacing.lg),
           TextField(
             controller: _searchController,
             onChanged: _onSearchChanged,
@@ -259,27 +281,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         _onSearchChanged('');
                       },
                     ),
-              filled: true,
-              fillColor: Colors.white,
-              contentPadding: const EdgeInsets.symmetric(vertical: 16),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide.none,
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: const BorderSide(color: Color(0xFFE8EAF0)),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide(
-                  color: theme.colorScheme.primary,
-                  width: 1.5,
-                ),
-              ),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpacing.md),
           SizedBox(
             height: 42,
             child: ListView.separated(
@@ -293,15 +297,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   label: Text(brand),
                   selected: selected,
                   showCheckmark: false,
-                  side: BorderSide(
-                    color: selected
-                        ? theme.colorScheme.primary
-                        : const Color(0xFFE5E7EB),
-                  ),
-                  backgroundColor: Colors.white,
-                  selectedColor: theme.colorScheme.primary,
+                  selectedColor: AppColors.primarySoft,
                   labelStyle: TextStyle(
-                    color: selected ? Colors.white : const Color(0xFF414655),
+                    color: selected ? AppColors.primary : AppColors.textMuted,
                     fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                   ),
                   onSelected: (_) => _selectBrand(brand),
@@ -312,13 +310,10 @@ class _HomeScreenState extends State<HomeScreen> {
           if (products != null &&
               snapshot.connectionState == ConnectionState.done &&
               !snapshot.hasError) ...[
-            const SizedBox(height: 13),
-            Text(
-              '${products.length} sản phẩm',
-              style: theme.textTheme.labelLarge?.copyWith(
-                color: const Color(0xFF777D8A),
-                fontWeight: FontWeight.w600,
-              ),
+            const SizedBox(height: AppSpacing.lg),
+            AppSectionHeading(
+              title: 'Điện thoại',
+              subtitle: '${products.length} sản phẩm',
             ),
           ],
         ],
@@ -327,29 +322,30 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildProductGrid(BuildContext context, List<Product> products) {
-    return SliverPadding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
-      sliver: SliverLayoutBuilder(
-        builder: (context, constraints) {
-          final width = constraints.crossAxisExtent;
-          final columns = width >= 1000
-              ? 4
-              : width >= 650
-              ? 3
-              : 2;
-          return SliverGrid.builder(
+    return SliverLayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.crossAxisExtent;
+        final horizontalInset = math.max(16.0, (width - 1320) / 2);
+        final columns = width >= 1120
+            ? 4
+            : width >= 760
+            ? 3
+            : 2;
+        return SliverPadding(
+          padding: EdgeInsets.fromLTRB(horizontalInset, 4, horizontalInset, 28),
+          sliver: SliverGrid.builder(
             itemCount: products.length,
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: columns,
-              mainAxisSpacing: 14,
-              crossAxisSpacing: 12,
-              childAspectRatio: width < 400 ? 0.69 : 0.74,
+              mainAxisSpacing: 16,
+              crossAxisSpacing: 14,
+              childAspectRatio: width < 400 ? 0.68 : 0.76,
             ),
             itemBuilder: (context, index) =>
                 _buildProductCard(context, products[index]),
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -357,15 +353,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final theme = Theme.of(context);
 
     return Card(
-      margin: EdgeInsets.zero,
-      color: Colors.white,
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
-        side: const BorderSide(color: Color(0xFFE9EBF1)),
-      ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
+        mouseCursor: SystemMouseCursors.click,
         onTap: () async {
           await _cartIdRestoration;
           if (!context.mounted) return;
@@ -379,6 +369,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 service: _service,
                 onCartUpdated: (id) {
                   if (mounted) setState(() => _cartId = id);
+                  final onCartContentsChanged = widget.onCartContentsChanged;
+                  if (onCartContentsChanged != null) {
+                    onCartContentsChanged(id);
+                  } else {
+                    widget.onCartIdChanged?.call(id);
+                  }
                 },
               ),
             ),
@@ -391,7 +387,7 @@ class _HomeScreenState extends State<HomeScreen> {
               flex: 6,
               child: Container(
                 width: double.infinity,
-                color: const Color(0xFFF7F8FB),
+                color: AppColors.imageSurface,
                 alignment: Alignment.center,
                 child: product.thumbnail == null
                     ? Icon(
@@ -441,7 +437,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.bodyMedium?.copyWith(
-                            color: const Color(0xFF202533),
+                            color: AppColors.text,
                             fontWeight: FontWeight.w700,
                             height: 1.2,
                           ),
@@ -458,7 +454,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.titleSmall?.copyWith(
-                            color: const Color(0xFFC24136),
+                            color: AppColors.price,
                             fontWeight: FontWeight.w800,
                           ),
                         ),
@@ -466,7 +462,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         Text(
                           '${product.variants.length} phiên bản',
                           style: theme.textTheme.labelSmall?.copyWith(
-                            color: const Color(0xFF888E9A),
+                            color: AppColors.textMuted,
                           ),
                         ),
                       ],
@@ -482,79 +478,24 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildErrorState(BuildContext context, Object? error) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.all(28),
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(
-              Icons.wifi_off_rounded,
-              size: 48,
-              color: Color(0xFF9A5360),
-            ),
-            const SizedBox(height: 14),
-            Text(
-              'Chưa tải được catalog',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '$error',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: const Color(0xFF777D8A),
-                height: 1.4,
-              ),
-            ),
-            const SizedBox(height: 18),
-            FilledButton.icon(
-              onPressed: _refreshProducts,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Thử lại'),
-            ),
-          ],
-        ),
-      ),
+    return AppStateView(
+      title: 'Chưa tải được catalog',
+      description: '$error',
+      icon: Icons.wifi_off_rounded,
+      actionLabel: 'Thử lại',
+      onAction: _refreshProducts,
     );
   }
 
   Widget _buildEmptyState(BuildContext context) {
     final hasSearch = _searchController.text.trim().isNotEmpty;
     final hasBrand = _selectedBrand != 'Tất cả';
-    return Padding(
-      padding: const EdgeInsets.all(28),
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(
-              Icons.search_off_rounded,
-              size: 50,
-              color: Color(0xFF9AA0AC),
-            ),
-            const SizedBox(height: 14),
-            Text(
-              'Không tìm thấy điện thoại phù hợp',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              hasSearch || hasBrand
-                  ? 'Thử đổi từ khóa hoặc chọn thương hiệu khác.'
-                  : 'Catalog hiện chưa có sản phẩm nào.',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium
-                  ?.copyWith(color: const Color(0xFF777D8A)),
-            ),
-          ],
-        ),
-      ),
+    return AppStateView(
+      title: 'Không tìm thấy điện thoại phù hợp',
+      description: hasSearch || hasBrand
+          ? 'Thử đổi từ khóa hoặc chọn thương hiệu khác.'
+          : 'Catalog hiện chưa có sản phẩm nào.',
+      icon: Icons.search_off_rounded,
     );
   }
 }
